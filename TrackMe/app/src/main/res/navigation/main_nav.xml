@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main_nav"
+    app:startDestination="@id/historyTrackingFragment">
+
+    <fragment
+        android:id="@+id/historyTrackingFragment"
+        android:name="com.phunt.trackme.ui.HistoryTrackingFragment"
+        android:label="HistoryTrackingFragment"
+        tools:layout="@layout/fragment_history_tracking">
+        <action
+            android:id="@+id/action_history_to_tracking"
+            app:destination="@id/trackingFragment"
+            app:popEnterAnim="@anim/slide_in_left"
+            app:popExitAnim="@anim/slide_out_right"
+            app:enterAnim="@anim/slide_in_right"
+            app:exitAnim="@anim/slide_out_left"/>
+    </fragment>
+    <fragment
+        android:id="@+id/trackingFragment"
+        android:name="com.phunt.trackme.ui.TrackingFragment"
+        android:label="fragment_tracking"
+        tools:layout="@layout/fragment_tracking" />
+</navigation>
