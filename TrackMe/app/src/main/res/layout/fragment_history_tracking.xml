@@ -22,27 +22,31 @@
             android:layout_height="match_parent"
             android:layout_marginLeft="16dp"
             android:layout_marginRight="16dp"
-            app:isGone="@{!hasHistory}"
             app:layoutManager="LinearLayoutManager"
+            app:spanCount="1"
             tools:context=".ui.HistoryTrackingFragment"
             tools:listitem="@layout/tracking_item" />
 
         <ImageView
             android:id="@+id/img_record"
-            android:layout_width="100dp"
-            android:layout_height="100dp"
+            android:layout_width="70dp"
+            android:layout_height="70dp"
             android:layout_marginBottom="20dp"
+            android:padding="10dp"
             android:contentDescription="@string/start_record_description"
             android:src="@drawable/start_record"
+            android:foreground="?selectableItemBackgroundBorderless"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent" />
+            app:layout_constraintStart_toStartOf="parent"
+            tools:ignore="UnusedAttribute" />
 
         <androidx.fragment.app.FragmentContainerView
             android:id="@+id/fragment_container"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:orientation="vertical" />
+            app:layoutManager="LinearLayoutManager"
+            android:scrollbars="vertical"/>
     </androidx.constraintlayout.widget.ConstraintLayout>
 
 </layout>

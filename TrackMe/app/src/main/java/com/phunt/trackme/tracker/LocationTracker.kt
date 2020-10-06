@@ -1,4 +1,4 @@
-package fr.quentinklein.slt
+package com.phunt.trackme.tracker
 
 import android.Manifest
 import android.annotation.SuppressLint

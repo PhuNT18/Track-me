@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:map="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <data>
+
+        <variable
+            name="record"
+            type="com.phunt.trackme.db.entity.TrackingEntity" />
+
+    </data>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/dim_10dp"
+        android:paddingBottom="@dimen/dim_20dp">
+
+        <com.google.android.gms.maps.MapView
+            android:id="@+id/map_lite"
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            map:liteMode="true"
+            map:mapType="none"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:id="@+id/tv_distance"
+            style="@style/TextAppearance.AppCompat.Body1"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/dim_20dp"
+            android:layout_marginBottom="@dimen/dim_20dp"
+            android:gravity="center"
+            android:text="@{String.format(@string/distance, record.distance)}"
+            android:layout_marginTop="@dimen/dim_10dp"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/map_lite" />
+
+        <TextView
+            android:id="@+id/tv_speed"
+            style="@style/TextAppearance.AppCompat.Body1"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="@{String.format(@string/speed_avg, record.avgSpeed)}"
+            android:layout_marginTop="@dimen/dim_10dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/map_lite" />
+
+        <TextView
+            android:id="@+id/tv_timer"
+            style="@style/TextAppearance.AppCompat.Body1"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="@dimen/dim_20dp"
+            app:layout_constraintBottom_toBottomOf="@+id/tv_speed"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@+id/tv_speed"
+            tools:text="21:35:69" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+
+</layout>
