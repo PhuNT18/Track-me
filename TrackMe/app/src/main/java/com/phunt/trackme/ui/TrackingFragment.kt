@@ -1,19 +1,22 @@
 package com.phunt.trackme.ui
 
 import android.annotation.SuppressLint
+import android.content.*
+import android.content.SharedPreferences.OnSharedPreferenceChangeListener
 import android.graphics.Color
 import android.location.Location
 import android.os.Bundle
+import android.os.IBinder
 import android.os.SystemClock
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
-import androidx.activity.viewModels
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
@@ -21,23 +24,37 @@ import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.*
 import com.google.maps.android.PolyUtil
 import com.google.maps.android.SphericalUtil
+import com.phunt.trackme.MainApplication
 import com.phunt.trackme.R
 import com.phunt.trackme.databinding.FragmentTrackingBinding
 import com.phunt.trackme.db.entity.TrackingEntity
+import com.phunt.trackme.service.LocationUpdatesService
+import com.phunt.trackme.tracker.DataManager
 import com.phunt.trackme.tracker.LocationTracker
 import com.phunt.trackme.tracker.ProviderError
+import com.phunt.trackme.utils.LocationService
+import com.phunt.trackme.utils.LocationService.Companion.ACTION_BROADCAST
+import com.phunt.trackme.utils.LocationService.Companion.EXTRA_LOCATION
+import com.phunt.trackme.utils.Utils
 import com.phunt.trackme.viewmodels.TrackingViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.math.RoundingMode
 import java.text.DecimalFormat
-import java.time.Duration
 import java.util.*
 
-class TrackingFragment : Fragment(), GoogleMap.OnMyLocationButtonClickListener, GoogleMap.OnMyLocationClickListener {
+class TrackingFragment : Fragment(), GoogleMap.OnMyLocationButtonClickListener, GoogleMap.OnMyLocationClickListener, OnSharedPreferenceChangeListener {
     private var TAG: String = TrackingFragment::class.java.simpleName
     private val viewModel by viewModels<TrackingViewModel>()
     private lateinit var binding: FragmentTrackingBinding
+
+    // The BroadcastReceiver used to listen from broadcasts from the service.
+    private var myReceiver: MyReceiver? = null
+    // A reference to the service used to get location updates.
+    private var mService: LocationUpdatesService? = null
+    // Tracks the bound state of the service.
+    private var mBound = false
+
     private var map: GoogleMap? = null
     private var mutablePolyline: Polyline? = null
 
@@ -52,31 +69,26 @@ class TrackingFragment : Fragment(), GoogleMap.OnMyLocationButtonClickListener, 
     private var distance: Float = 0f // Km
     private var speed: Float = 0f // Km/h
     private var time: Long = 0 // second
-    private var tracker: LocationTracker = LocationTracker(
-            minTimeBetweenUpdates = 2000L, // 2 second
-            minDistanceBetweenUpdates = 3F, // 3 meter
-            shouldUseGPS = true,
-            shouldUseNetwork = true,
-            shouldUsePassive = true
-    ).also {
-        it.addListener(object : LocationTracker.Listener {
-            override fun onLocationFound(location: Location) {
-                val latLng = LatLng(location.latitude, location.longitude)
-                if (!isPauseTracking) {
-                    calculateSpeed(location)
-                }
-                lastKnownLocation = latLng
-                oldLocation = location
-                addMarker(true)
-                map?.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng, 17f))
-                updateTrack()
-            }
 
-            override fun onProviderError(providerError: ProviderError) {
-            }
-
-        })
+    private val mDataManager: DataManager by lazy {
+        DataManager.getInstance(MainApplication.instance)
     }
+
+    // Monitors the state of the connection to the service.
+    private val mServiceConnection: ServiceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName, service: IBinder) {
+            val binder: LocationUpdatesService.LocalBinder = service as LocationUpdatesService.LocalBinder
+            mService = binder.getService()
+            mService?.requestLocationUpdates()
+            mBound = true
+        }
+
+        override fun onServiceDisconnected(name: ComponentName) {
+            mService = null
+            mBound = false
+        }
+    }
+
 
     @SuppressLint("MissingPermission")
     private val callback = OnMapReadyCallback { googleMap ->
@@ -88,13 +100,13 @@ class TrackingFragment : Fragment(), GoogleMap.OnMyLocationButtonClickListener, 
         mutablePolyline = map?.addPolyline(PolylineOptions()
                 .color(Color.CYAN)
                 .width(4f))
-        startStop()
     }
 
     override fun onCreateView(inflater: LayoutInflater,
                               container: ViewGroup?,
                               savedInstanceState: Bundle?): View? {
         binding = FragmentTrackingBinding.inflate(inflater, container, false)
+        myReceiver = MyReceiver()
         initUi()
         initEvent()
         return binding.root
@@ -106,10 +118,47 @@ class TrackingFragment : Fragment(), GoogleMap.OnMyLocationButtonClickListener, 
         mapFragment?.getMapAsync(callback)
     }
 
+    override fun onStart() {
+        super.onStart()
+        // Bind to the service. If the service is in foreground mode, this signals to the service
+        // that since this activity is in the foreground, the service can exit foreground mode.
+        requireContext().bindService(Intent(requireContext(), LocationUpdatesService::class.java), mServiceConnection,
+                Context.BIND_AUTO_CREATE)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        myReceiver?.let {
+            LocalBroadcastManager.getInstance(MainApplication.instance).registerReceiver(it,
+                    IntentFilter(ACTION_BROADCAST))
+        }
+    }
+
+    override fun onPause() {
+        myReceiver?.let {
+            LocalBroadcastManager.getInstance(MainApplication.instance).unregisterReceiver(it)
+        }
+        super.onPause()
+    }
+
+    override fun onStop() {
+        if (mBound) {
+            // Unbind from the service. This signals to the service that this activity is no longer
+            // in the foreground, and the service can respond by promoting itself to a foreground
+            // service.
+            requireContext().unbindService(mServiceConnection)
+            mBound = false
+        }
+        MainApplication.instance.getSharedPreferences(LocationService.PREF_NAME, Context.MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(this)
+        super.onStop()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "onDestroy")
-        startStop()
+        mService?.removeLocationUpdates()
+        mDataManager.points = mutableListOf()
+//        startStop()
     }
 
     private fun initUi() {
@@ -130,8 +179,13 @@ class TrackingFragment : Fragment(), GoogleMap.OnMyLocationButtonClickListener, 
     }
 
     private fun initEvent() {
+        MainApplication.instance.getSharedPreferences(LocationService.PREF_NAME, Context.MODE_PRIVATE).registerOnSharedPreferenceChangeListener(this)
+//        mService?.requestLocationUpdates()
+
         binding.imgActionPause.setOnClickListener {
+            mService?.removeLocationUpdates()
             isPauseTracking = true
+            mDataManager.points = mutableListOf()
             speed = 0f
             binding.tvSpeed.text = String.format(resources.getString(R.string.speed), speed)
             binding.tvTimer.stop()
@@ -142,11 +196,13 @@ class TrackingFragment : Fragment(), GoogleMap.OnMyLocationButtonClickListener, 
 
         binding.imgActionStop.setOnClickListener {
             storeDB()
+            mService?.removeLocationUpdates()
             activity?.onBackPressed()
         }
 
         binding.imgActionReRecord.setOnClickListener {
             map?.clear()
+            mService?.requestLocationUpdates()
             time = 0
             binding.tvTimer.text = String.format("%02d:%02d:%02d", 0, 0, 0)
             binding.tvTimer.base = SystemClock.elapsedRealtime()
@@ -157,6 +213,7 @@ class TrackingFragment : Fragment(), GoogleMap.OnMyLocationButtonClickListener, 
             mutablePolyline = map?.addPolyline(PolylineOptions()
                     .color(Color.CYAN)
                     .width(4f))
+            mDataManager.points = mutablePolyline?.points
 
             binding.tvDistance.text = String.format(getString(R.string.distance), 0f)
             addMarker(true)
@@ -180,7 +237,7 @@ class TrackingFragment : Fragment(), GoogleMap.OnMyLocationButtonClickListener, 
         drawJob?.cancel()
         if (isPauseTracking) return
         drawJob = lifecycleScope.launch {
-            points = mutablePolyline?.points as MutableList<LatLng>
+            points = mDataManager.points
             lastKnownLocation?.let { points?.add(it) }
             mutablePolyline?.points = points
             distance = (SphericalUtil.computeLength(points) / 1000).toFloat()
@@ -222,23 +279,11 @@ class TrackingFragment : Fragment(), GoogleMap.OnMyLocationButtonClickListener, 
         binding.tvSpeed.text = String.format(resources.getString(R.string.speed), speed)
     }
 
-    //Start/Stop tracking
-    @SuppressLint("MissingPermission")
-    private fun startStop() {
-        if (tracker.isListening) {
-            tracker.stopListening()
-            Log.d(TAG, "Stop tracking")
-        } else {
-            context?.let { tracker.startListening(it) }
-            Log.d(TAG, "Start tracking")
-        }
-    }
-
     private fun storeDB(){
         lifecycleScope.launch {
             if(points != null && points!!.size > 0) {
                 val polyLineStr = PolyUtil.encode(points)
-                val avgSpeed = formatFloat((distance/time)*3600)
+                val avgSpeed = formatFloat((distance / time) * 3600)
                 val trackingRecord = TrackingEntity(polyLineStr, distance, avgSpeed, time, Date(System.currentTimeMillis()))
                 Log.d(TAG, "storeDB: $trackingRecord")
                 viewModel.insert(trackingRecord)
@@ -246,9 +291,36 @@ class TrackingFragment : Fragment(), GoogleMap.OnMyLocationButtonClickListener, 
         }
     }
 
-    private fun formatFloat(number : Float) : Float{
+    private fun formatFloat(number: Float) : Float{
         val df = DecimalFormat("#.##")
         df.roundingMode = RoundingMode.CEILING
         return df.format(number).toFloat()
+    }
+
+    /**
+     * Receiver for broadcasts sent by [LocationUpdatesService].
+     */
+    private inner class MyReceiver : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val location = intent.getParcelableExtra<Location>(EXTRA_LOCATION)
+            if (location != null) {
+                val latLng = LatLng(location.latitude, location.longitude)
+                if (!isPauseTracking) {
+                    calculateSpeed(location)
+                }
+                lastKnownLocation = latLng
+                oldLocation = location
+                addMarker(true)
+                map?.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng, 17f))
+                updateTrack()
+            }
+        }
+    }
+
+    override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
+        // Update the buttons state depending on whether location updates are being requested.
+        if (key == Utils.KEY_REQUESTING_LOCATION_UPDATES) {
+
+        }
     }
 }

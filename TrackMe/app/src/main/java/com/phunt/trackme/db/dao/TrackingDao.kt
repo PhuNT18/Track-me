@@ -9,7 +9,7 @@ import com.phunt.trackme.db.entity.TrackingEntity
 
 @Dao
 interface TrackingDao {
-    @Query("SELECT * FROM TrackingEntity ORDER BY id DESC")
+    @Query("SELECT * FROM TrackingEntity ORDER BY createDate DESC")
     fun getAllTracking(): PagingSource<Int, TrackingEntity>
 
     @Insert

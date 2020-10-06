@@ -2,6 +2,9 @@ package com.phunt.trackme
 
 import android.app.Application
 import com.phunt.trackme.db.AppDatabase
+import com.phunt.trackme.tracker.DataManager
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 
 class MainApplication : Application() {
 
@@ -9,6 +12,9 @@ class MainApplication : Application() {
         super.onCreate()
         instance = this
         AppDatabase.getInstance(instance)
+        GlobalScope.launch {
+            DataManager.getInstance(instance)
+        }
     }
 
     companion object {
